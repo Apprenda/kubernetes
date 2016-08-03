@@ -1,3 +1,5 @@
+// +build !linux
+
 /*
 Copyright 2015 The Kubernetes Authors.
 
@@ -17,31 +19,29 @@ limitations under the License.
 package cm
 
 import (
-	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
+	"k8s.io/kubernetes/pkg/util/mount"
 )
 
-type containerManagerStub struct{}
+type stubContainerManager struct{}
 
-var _ ContainerManager = &containerManagerStub{}
-
-func (cm *containerManagerStub) Start() error {
-	glog.V(2).Infof("Starting stub container manager")
+func (stubContainerManager) Start() error {
 	return nil
 }
 
-func (cm *containerManagerStub) SystemCgroupsLimit() api.ResourceList {
+func (stubContainerManager) SystemCgroupsLimit() api.ResourceList {
 	return api.ResourceList{}
 }
 
-func (cm *containerManagerStub) GetNodeConfig() NodeConfig {
+func (stubContainerManager) GetNodeConfig() NodeConfig {
 	return NodeConfig{}
 }
 
-func (cm *containerManagerStub) Status() Status {
+func (cm *stubContainerManager) Status() Status {
 	return Status{}
 }
 
-func NewStubContainerManager() ContainerManager {
-	return &containerManagerStub{}
+func NewContainerManager(_ mount.Interface, _ cadvisor.Interface, _ NodeConfig) (ContainerManager, error) {
+	return &stubContainerManager{}, nil
 }

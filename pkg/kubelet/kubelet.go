@@ -411,8 +411,40 @@ func NewMainKubelet(
 	// Initialize the runtime.
 	switch containerRuntime {
 	case "docker":
-		// Only supported one for now, continue.
 		klet.containerRuntime = dockertools.NewDockerManager(
+			dockerClient,
+			kubecontainer.FilterEventRecorder(recorder),
+			klet.livenessManager,
+			containerRefManager,
+			klet.podManager,
+			machineInfo,
+			podInfraContainerImage,
+			pullQPS,
+			pullBurst,
+			containerLogsDir,
+			osInterface,
+			klet.networkPlugin,
+			klet,
+			klet.httpClient,
+			dockerExecHandler,
+			oomAdjuster,
+			procFs,
+			klet.cpuCFSQuota,
+			imageBackOff,
+			serializeImagePulls,
+			enableCustomMetrics,
+			// If using "kubenet", the Kubernetes network plugin that wraps
+			// CNI's bridge plugin, it knows how to set the hairpin veth flag
+			// so we tell the container runtime to back away from setting it.
+			// If the kubelet is started with any other plugin we can't be
+			// sure it handles the hairpin case so we instruct the docker
+			// runtime to set the flag instead.
+			klet.hairpinMode == componentconfig.HairpinVeth && networkPluginName != "kubenet",
+			seccompProfileRoot,
+			containerRuntimeOptions...,
+		)
+	case "windows-docker":
+		klet.containerRuntime = dockertools.NewWindowsDockerManager(
 			dockerClient,
 			kubecontainer.FilterEventRecorder(recorder),
 			klet.livenessManager,
@@ -565,6 +597,10 @@ type serviceLister interface {
 
 type nodeLister interface {
 	List() (machines api.NodeList, err error)
+}
+
+type FlannelHelper interface {
+	Handshake() (podCIDR string, err error)
 }
 
 // Kubelet is the main kubelet implementation.
@@ -787,7 +823,7 @@ type Kubelet struct {
 	// TODO: Flannelhelper doesn't store any state, we can instantiate it
 	// on the fly if we're confident the dbus connetions it opens doesn't
 	// put the system under duress.
-	flannelHelper *FlannelHelper
+	flannelHelper FlannelHelper
 
 	// If non-nil, use this IP address for the node
 	nodeIP net.IP
@@ -1190,7 +1226,8 @@ func (kl *Kubelet) GeneratePodHostNameAndDomain(pod *api.Pod) (string, string, e
 func (kl *Kubelet) GenerateRunContainerOptions(pod *api.Pod, container *api.Container, podIP string) (*kubecontainer.RunContainerOptions, error) {
 	var err error
 	opts := &kubecontainer.RunContainerOptions{CgroupParent: kl.cgroupRoot}
-	hostname, hostDomainName, err := kl.GeneratePodHostNameAndDomain(pod)
+	// hostname, hostDomainName, err := kl.GeneratePodHostNameAndDomain(pod)
+	hostname, _, err := kl.GeneratePodHostNameAndDomain(pod)
 	if err != nil {
 		return nil, err
 	}
@@ -1209,23 +1246,23 @@ func (kl *Kubelet) GenerateRunContainerOptions(pod *api.Pod, container *api.Cont
 		}
 	}
 
-	opts.Mounts, err = makeMounts(pod, kl.getPodDir(pod.UID), container, hostname, hostDomainName, podIP, volumes)
-	if err != nil {
-		return nil, err
-	}
+	// opts.Mounts, err = makeMounts(pod, kl.getPodDir(pod.UID), container, hostname, hostDomainName, podIP, volumes)
+	// if err != nil {
+	// 	return nil, err
+	// }
 	opts.Envs, err = kl.makeEnvironmentVariables(pod, container, podIP)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(container.TerminationMessagePath) != 0 {
-		p := kl.getPodContainerDir(pod.UID, container.Name)
-		if err := os.MkdirAll(p, 0750); err != nil {
-			glog.Errorf("Error on creating %q: %v", p, err)
-		} else {
-			opts.PodContainerDir = p
-		}
-	}
+	// if len(container.TerminationMessagePath) != 0 {
+	// 	p := kl.getPodContainerDir(pod.UID, container.Name)
+	// 	if err := os.MkdirAll(p, 0750); err != nil {
+	// 		glog.Errorf("Error on creating %q: %v", p, err)
+	// 	} else {
+	// 		opts.PodContainerDir = p
+	// 	}
+	// }
 
 	opts.DNS, opts.DNSSearch, err = kl.GetClusterDNS(pod)
 	if err != nil {
