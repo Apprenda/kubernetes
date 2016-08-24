@@ -18,11 +18,7 @@ limitations under the License.
 
 package cm
 
-import (
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/kubelet/cadvisor"
-	"k8s.io/kubernetes/pkg/util/mount"
-)
+import "k8s.io/kubernetes/pkg/api"
 
 type stubContainerManager struct{}
 
@@ -42,6 +38,6 @@ func (cm *stubContainerManager) Status() Status {
 	return Status{}
 }
 
-func NewContainerManager(_ mount.Interface, _ cadvisor.Interface, _ NodeConfig) (ContainerManager, error) {
-	return &stubContainerManager{}, nil
+func NewStubContainerManager() ContainerManager {
+	return &stubContainerManager{}
 }
