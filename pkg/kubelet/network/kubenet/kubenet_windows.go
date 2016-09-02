@@ -19,15 +19,18 @@ limitations under the License.
 package kubenet
 
 import (
-	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"strconv"
 
-	"github.com/Microsoft/hcsshim"
+	"github.com/docker/engine-api/client"
+	"github.com/docker/engine-api/types"
+	dockernetwork "github.com/docker/engine-api/types/network"
 	"github.com/golang/glog"
+	"golang.org/x/net/context"
 	"k8s.io/kubernetes/pkg/apis/componentconfig"
 	"k8s.io/kubernetes/pkg/kubelet/network"
 )
@@ -43,6 +46,7 @@ type kubenetNetworkPlugin struct {
 	host network.Host
 
 	networkInterface string
+	dockerClient     *client.Client
 }
 
 // NewPlugin returns an initialized network plugin
@@ -50,7 +54,7 @@ func NewPlugin(networkPluginDir string) network.NetworkPlugin {
 	return &kubenetNetworkPlugin{}
 }
 
-func (p *kubenetNetworkPlugin) Init(host network.Host, hairpinMode componentconfig.HairpinMode, nonMasqueradeCIDR string) error {
+func (p *kubenetNetworkPlugin) Init(host network.Host, hairpinMode componentconfig.HairpinMode, nonMasqueradeCIDR string, mtu int) error {
 	glog.V(5).Infof("Initialized kubenet plugin")
 	p.host = host
 
@@ -58,6 +62,12 @@ func (p *kubenetNetworkPlugin) Init(host network.Host, hairpinMode componentconf
 	if p.networkInterface == "" {
 		return errors.New("the CONTAINER_NETWORK_IFACE environment variable is required for Kubenet on Windows. This is the interface that will be used for setting up the container network.")
 	}
+
+	c, err := client.NewEnvClient()
+	if err != nil {
+		return fmt.Errorf("error initializing new docker client: %v", err)
+	}
+	p.dockerClient = c
 
 	return nil
 }
@@ -80,21 +90,17 @@ func (p *kubenetNetworkPlugin) Event(name string, details map[string]interface{}
 		return
 	}
 
-	nets, err := hcsshim.HNSListNetworkRequest("GET", "", "")
+	ctx := context.Background()
+
+	nets, err := p.dockerClient.NetworkList(ctx, types.NetworkListOptions{})
 	if err != nil {
-		glog.Errorf("Error getting list of container networks: %v", err)
+		glog.Errorf("Error listing docker networks: %v", err)
+		return
 	}
 
-	// Check if the network already exists
 	for _, n := range nets {
 		if n.Name == kubenetNetworkName {
-			// validate
-			if n.NetworkAdapterName != p.networkInterface {
-				glog.Warningf("The container network %q already exists, but it is using an unexpected network adapter %q. Expected network adapter %q.", n.Name, n.NetworkAdapterName, p.networkInterface)
-				return
-			}
-
-			glog.Infof("Container network %q already exists on the %q network adapter. Skipping configuration.", kubenetNetworkName, n.NetworkAdapterName)
+			glog.Infof("Network options: %+v", n.Options)
 			return
 		}
 	}
@@ -109,48 +115,32 @@ func (p *kubenetNetworkPlugin) Event(name string, details map[string]interface{}
 	gw := ip.To4()
 	gw[3]++
 
-	s := hcsshim.Subnet{
-		AddressPrefix:  cidr.String(),
-		GatewayAddress: gw.String(),
+	// IPAM configuration inspect
+	ipam := dockernetwork.IPAM{
+		Driver: "default",
+		Config: []dockernetwork.IPAMConfig{{Subnet: cidr.String(), Gateway: gw.String()}},
 	}
 
-	net := &hcsshim.HNSNetwork{
-		Name:               kubenetNetworkName,
-		Type:               containerNetworkType,
-		Subnets:            []hcsshim.Subnet{s},
-		NetworkAdapterName: p.networkInterface,
+	netCreate := types.NetworkCreate{
+		CheckDuplicate: true,
+		Driver:         "transparent",
+		IPAM:           ipam,
+		Options:        map[string]string{"com.docker.network.windowsshim.interface": p.networkInterface},
 	}
 
-	config, err := json.Marshal(net)
+	resp, err := p.dockerClient.NetworkCreate(ctx, kubenetNetworkName, netCreate)
 	if err != nil {
-		glog.Errorf("Failed to marshal HNS Network config: %v", err)
+		glog.Errorf("error creating network for Kubenet: %v", err)
 		return
 	}
-
-	glog.Infof("Issuing HNS request to create new network: %+v", net)
-	hnsresp, err := hcsshim.HNSNetworkRequest("POST", "", string(config))
-	if err != nil {
-		glog.Errorf("Error creating HNS network: %v", err)
-		return
-	}
-
-	glog.Infof("HNS Network created: %+v", hnsresp)
-
-	// Restart container runtime to pick up new network
-	glog.Info("Restarting container runtime")
-	cmd := exec.Command("powershell", "restart-service", "docker")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		glog.Errorf("Error restarting docker: output: %s: error: %v", string(out), err)
-		return
-	}
+	glog.Infof("successfully created network: %v", resp)
 
 	// We need to set the transparent network adapter's IP address to be the gateway IP address.
 	// This is tricky. We are currently assuming that the network adapter used in the tranparent network will always have the same name.
 	prefixLength, _ := cidr.Mask.Size()
 	transpIface := `"vEthernet (HNSTransparent)"`
-	cmd = exec.Command("powershell", "New-NetIPAddress", "-InterfaceAlias", transpIface, "-IPAddress", gw.String(), "-PrefixLength", strconv.Itoa(prefixLength))
-	out, err = cmd.CombinedOutput()
+	cmd := exec.Command("powershell", "New-NetIPAddress", "-InterfaceAlias", transpIface, "-IPAddress", gw.String(), "-PrefixLength", strconv.Itoa(prefixLength))
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		glog.Errorf("Error setting IP address on interface %q: output: %s: error: %v", transpIface, string(out), err)
 		return
