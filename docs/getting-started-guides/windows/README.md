@@ -2,7 +2,8 @@
 Windows Server Containers are supported on Kubernetes as an alpha feature. Kubernetes control plane (API Server, Scheduler, Controller Manager etc) continues to run on Linux, kubelet and kube-proxy can be run on Windows.
 
 ## Prerequisites
-We have tested Windows Server Containers for Kubernetes using the following
+We have tested Windows Server Containers for Kubernetes using the following,
+
 1. Kubernetes control plane running on existing Linux infrastructure
 2. Windows Server 2016 RTM
 3. Docker Version 1.12.2-cs2-ws-beta
@@ -16,6 +17,7 @@ This is already supported on Linux using the cbr0 bridge, which essentially crea
 
 ### Windows
 We will need the following on each Kubernetes Windows node:
+
 1. Two NICs - The two windows container networking modes we are interested in (transparent and L2 bridge) both use an external hyper-v virtual switch. This means that one of the NICs is lost to the bridge, creating the need for the second one. (Emulating might be possible, but hasn’t been explored)
 2. Transparent container network created - As of now, this is done manually, but could potentially be done by the Kubelet. Need more investigation here.
 3. RRAS (Routing) Windows feature enabled - Allows routing between NICs on the box, and also “captures” packets that have the destination IP of a pod running on the node.
@@ -25,35 +27,47 @@ The following diagram attempts to capture Windows Setup
 ![Windows Setup](windows-setup.png)
 
 ## Setup
-
 ### Host Setup
 #### Windows
+
 1. Windows host running Windows Server 2016 and setup according to instructions [here](https://msdn.microsoft.com/en-us/virtualization/windowscontainers/quick_start/quick_start_windows_server)
 2. RRAS (Routing) Windows feature enabled
 3. [Install docker](https://msdn.microsoft.com/en-us/virtualization/windowscontainers/quick_start/quick_start_windows_server)
+
 #### Linux
+
 Linux hosts should be setup according to their respective distro documentation. Linux host also require to have CNI Setup.
 
 ### Component Setup
 In order to build the work node components, the *kubelet* and *kube-proxy* for Windows, the following needs to be installed on the host
 * Git, Go 1.7.1+ 
 * make (if using Linux or MacOS)
-* Important notes and other dependencies are listed [here](https://github.com/kubernetes/kubernetes/blob/master/docs/devel/development.md#building-kubernetes-on-a-local-osshell-environment)  
+* Important notes and other dependencies are listed [here](https://github.com/kubernetes/kubernetes/blob/master/docs/devel/development.md#building-kubernetes-on-a-local-osshell-environment)
+
 #### kubelet
+
 In order to build the *kubelet*, run:
+
 1. `cd $GOPATH/src/k8s.io/kubernetes`
 2. Build *kubelet*
-**1. Linux/MacOS: `KUBE_BUILD_PLATFORMS=windows/amd64 make WHAT=cmd/kubelet`
-**2. Windows: `go build cmd/kubelet/kubelet.go`
+
+⋅⋅1. Linux/MacOS: `KUBE_BUILD_PLATFORMS=windows/amd64 make WHAT=cmd/kubelet`
+⋅⋅2. Windows: `go build cmd/kubelet/kubelet.go`
+
 #### kube-proxy
-In order to build *kube-proxy*, run: 
+
+In order to build *kube-proxy*, run:
+
 1. `cd $GOPATH/src/k8s.io/kubernetes`
 2. Build *kube-proxy*
-**1. Linux/MacOS: `KUBE_BUILD_PLATFORMS=windows/amd64 make WHAT=cmd/kube-proxy`
-**2. Windows: `go build cmd/kube-proxy/proxy.go`
+
+⋅⋅1. Linux/MacOS: `KUBE_BUILD_PLATFORMS=windows/amd64 make WHAT=cmd/kube-proxy`
+⋅⋅2. Windows: `go build cmd/kube-proxy/proxy.go`
 
 ### Route Setup
+
 The below setup assumes one Linux and two Windows Server 2016 nodes and a cluster CIDR 192.168.0.0/16
+
 | Hostname | Routable IP address | Pod CIDR |
 | --- | --- | --- |
 | Lin01 | <IP of Lin01 host> | 192.168.0.0/24 |
@@ -91,14 +105,20 @@ Use your preferred method to start Kubernetes cluster on Linux. Please note that
 ## Windows
 ### kubelet
 Run the following in a powershell window
+
 1. Set environment variable *CONTAINER_NETWORK* value to the docker container network to use
 `$env:CONTAINER_NETWORK = "<docker network>"`
+
 2. Run *kubelet* executable using the below command
 `kubelet.exe --hostname-override=<ip address/hostname of the windows node>  --pod-infra-container-image="apprenda/pause" --resolv-conf="" --api_servers=<api server location>`
+
 ### kube-proxy
+
 Run the following in a powershell admin window (Run as administrator)
+
 1. Set environment variable *INTERFACE_TO_ADD_SERVICE_IP* value to a node only network interface, interface created when docker is installed should work
 `$env:INTERFACE_TO_ADD_SERVICE_IP = "vEthernet (HNS Internal NIC)"`
+
 2. Run *kube-proxy* executable using the below command
 `.\proxy.exe --v=3 --proxy-mode=userspace --hostname-override=<ip address/hostname of the windows node> --master=<api server location> --bind-address=<ip address of the windows node>`
 
