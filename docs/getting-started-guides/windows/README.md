@@ -50,9 +50,8 @@ In order to build the *kubelet*, run:
 
 1. `cd $GOPATH/src/k8s.io/kubernetes`
 2. Build *kubelet*
-
-⋅⋅1. Linux/MacOS: `KUBE_BUILD_PLATFORMS=windows/amd64 make WHAT=cmd/kubelet`
-⋅⋅2. Windows: `go build cmd/kubelet/kubelet.go`
+- 1. Linux/MacOS: `KUBE_BUILD_PLATFORMS=windows/amd64 make WHAT=cmd/kubelet`
+- 2. Windows: `go build cmd/kubelet/kubelet.go`
 
 #### kube-proxy
 
@@ -60,9 +59,8 @@ In order to build *kube-proxy*, run:
 
 1. `cd $GOPATH/src/k8s.io/kubernetes`
 2. Build *kube-proxy*
-
-⋅⋅1. Linux/MacOS: `KUBE_BUILD_PLATFORMS=windows/amd64 make WHAT=cmd/kube-proxy`
-⋅⋅2. Windows: `go build cmd/kube-proxy/proxy.go`
+- 1. Linux/MacOS: `KUBE_BUILD_PLATFORMS=windows/amd64 make WHAT=cmd/kube-proxy`
+- 2. Windows: `go build cmd/kube-proxy/proxy.go`
 
 ### Route Setup
 
@@ -70,9 +68,9 @@ The below setup assumes one Linux and two Windows Server 2016 nodes and a cluste
 
 | Hostname | Routable IP address | Pod CIDR |
 | --- | --- | --- |
-| Lin01 | <IP of Lin01 host> | 192.168.0.0/24 |
-| Win01 | <IP of Win01 host> | 192.168.1.0/24 |
-| Win02 | <IP of Win02 host> | 192.168.2.0/24 |
+| Lin01 | `<IP of Lin01 host>` | 192.168.0.0/24 |
+| Win01 | `<IP of Win01 host>` | 192.168.1.0/24 |
+| Win02 | `<IP of Win02 host>` | 192.168.2.0/24 |
 
 **Lin01**
 ```
