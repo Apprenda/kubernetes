@@ -13,12 +13,12 @@ An initial approach to Windows networking using L3 routing is proposed. Given th
 In this L3 networking approach, we choose a /16 subnet for the cluster nodes, and we assign a /24 subnet to each worker node. All pods on a given worker node will be connected to the /24 subnet. This allows pods on the same node to communicate with each other, but doesn’t quite solve networking across nodes. In order to enable networking between pods running on different nodes, we use routing features that are built into Windows Server 2016 and Linux.
 
 ### Linux
-This is already supported on Linux using the cbr0 bridge, which essentially creates a private network local to the node. Similar to the windows side, routes must be created to the other pod CIDRs to send packets via the “public” NIC.
+This is already supported on Linux using a bridge interface, which essentially creates a private network local to the node. Similar to the Windows side, routes to all other pod CIDRs must be created in order to send packets via the “public” NIC.
 
 ### Windows
 We will need the following on each Kubernetes Windows node:
 
-1. Two NICs - The two windows container networking modes we are interested in (transparent and L2 bridge) both use an external hyper-v virtual switch. This means that one of the NICs is lost to the bridge, creating the need for the second one. (Emulating might be possible, but hasn’t been explored)
+1. Two NICs - The two Windows container networking modes we are interested in (transparent and L2 bridge) use an external hyper-v virtual switch. This means that one of the NICs is lost to the bridge, creating the need for the second one. (Emulating might be possible, but hasn’t been explored)
 2. Transparent container network created - As of now, this is done manually, but could potentially be done by the Kubelet. Need more investigation here.
 3. RRAS (Routing) Windows feature enabled - Allows routing between NICs on the box, and also “captures” packets that have the destination IP of a pod running on the node.
 4. Routes defined pointing to the other pod CIDRs via the “public” NIC - These routes are added to the built-in routing table.
